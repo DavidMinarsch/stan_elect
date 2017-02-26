@@ -58,12 +58,12 @@ presvote = presvote.rename(columns={'g76_84pr': 'v_prev', 'stnum2': 'state'})
 candidate_effects = pd.read_csv("/Users/davidminarsch/Desktop/PythonMLM/ARM_Data/election88/candidate_effects.csv")
 candidate_effects = candidate_effects.drop(candidate_effects.columns[[0]], axis=1)
 candidate_effects = candidate_effects.rename(columns={'state': 'state_abbr'})
-candidate_effects['candidate_effects_weighted'] = (candidate_effects['X76'] + candidate_effects['X80'] + candidate_effects['X84']) / 3.0
+candidate_effects.loc[:,'candidate_effects_weighted'] = (candidate_effects.loc[:,'X76'] + candidate_effects.loc[:,'X80'] + candidate_effects.loc[:,'X84']) / 3.0
 candidate_effects_1 = candidate_effects.iloc[:9]
 candidate_effects = pd.concat([candidate_effects_1,candidate_effects.ix[8:]]).reset_index(drop=True)
 candidate_effects.iloc[8] = 0
 candidate_effects = candidate_effects.set_value(8, 'state_abbr', 'DC')
-presvote['v_prev'] += candidate_effects['candidate_effects_weighted']
+presvote.loc[:,'v_prev'] += candidate_effects.loc[:,'candidate_effects_weighted']
 
 # Merge all three dataframes into one:
 polls = pd.merge(polls, state_info, on='state', how='left')
@@ -73,8 +73,8 @@ polls = pd.merge(polls, presvote, on='state', how='left')
 polls_subset = polls.loc[polls['survey'] == '9158']
 
 # Change female to sex and black to race:
-polls_subset['sex'] = polls_subset.loc[:,'female'] + 1
-polls_subset['race'] = polls_subset.loc[:,'black'] + 1
+polls_subset.loc[:,'sex'] = polls_subset.loc[:,'female'] + 1
+polls_subset.loc[:,'race'] = polls_subset.loc[:,'black'] + 1
 
 # Drop unnessary columns: 
 polls_subset = polls_subset.drop(['org', 'year', 'survey', 'region', 'not_dc', 'state_abbr', 'weight', 'female', 'black'], axis=1)
@@ -82,9 +82,11 @@ polls_subset['main'] = np.where(polls_subset['bush'] == 1, 1, np.where(polls_sub
 
 # Drop nan in polls_subset.bush
 polls_subset_no_nan = polls_subset[polls_subset.bush.notnull()]
+polls_subset_no_nan = polls_subset_no_nan.drop(['main'], axis=1)
 
 # define other data summaries
-n = len(polls_subset.bush)             # of survey respondents
+n = len(polls_subset.bush)              # of survey respondents
+n_no_nan = len(polls_subset_no_nan.bush)             # of survey respondents
 n_sex = max(polls_subset.sex)           # of sex categories
 n_race = max(polls_subset.race)         # of race categories
 n_age = max(polls_subset.age)           # of age categories
@@ -112,7 +114,10 @@ census88 = pd.merge(census88, presvote, on='state', how='left')
 # female: indicator (=1) for female
 # black: indicator (=1) for black
 # N: size of population in this cell
-
+# Change female to sex and black to race:
+census88.loc[:,'sex'] = census88.loc[:,'female'] + 1
+census88.loc[:,'race'] = census88.loc[:,'black'] + 1
+census88 = census88.drop(['female', 'black'], axis=1)
 
 """Step 4: Fit a regression model for an individual survey response given demographics, geography etc."""
 ################################
@@ -329,9 +334,9 @@ model {
   c ~ normal (0, sigma_c);
   d ~ normal (0, sigma_d);
   e ~ normal (0, sigma_e);
-  f ~ normal (0, sigma_f);
-  g ~ normal (0, sigma_g);
-  h ~ normal (0, sigma_h);
+  #f ~ normal (0, sigma_f);
+  #g ~ normal (0, sigma_g);
+  #h ~ normal (0, sigma_h);
   alpha ~ normal(0, 100);
   sigma_a ~ scaled_inv_chi_square(mu,sigma_0);
   sigma_b ~ scaled_inv_chi_square(mu,sigma_0);
@@ -348,7 +353,7 @@ model {
 """
 
 # Model parameters and data:
-model_2_data_dict = {'N': n, 'n_state': n_state, 'n_edu': n_edu, 'n_sex': n_sex, 'n_age': n_age, 'n_race': n_race,
+model_2_data_dict = {'N': n_no_nan, 'n_state': n_state, 'n_edu': n_edu, 'n_sex': n_sex, 'n_age': n_age, 'n_race': n_race,
   'state': polls_subset_no_nan.state, 'edu': polls_subset_no_nan.edu, 'sex': polls_subset_no_nan.sex, 'age': polls_subset_no_nan.age,
   'race': polls_subset_no_nan.race, 'state_v_prev': polls_subset_no_nan.v_prev, 'y': polls_subset_no_nan.bush.astype(int)}
 
@@ -356,10 +361,10 @@ model_2_data_dict = {'N': n, 'n_state': n_state, 'n_edu': n_edu, 'n_sex': n_sex,
 n_chains = 2
 n_iter = 1000
 #full_model_fit = pystan.stan(model_code=full_model, data=full_model_data_dict, iter=n_iter, chains=2)
-sm = StanModel(model_code=model_2)
-with open('model_2.pkl', 'wb') as f:
-    pickle.dump(sm, f)
-#sm = pickle.load(open('model_2.pkl', 'rb'))
+#sm = StanModel(model_code=model_2)
+#with open('model_2.pkl', 'wb') as f:
+#    pickle.dump(sm, f)
+sm = pickle.load(open('model_2.pkl', 'rb'))
 model_2_fit = sm.sampling(data=model_2_data_dict, iter=n_iter, chains=n_chains)
 
 # Plot coefficients with confidence intervals:
@@ -382,7 +387,7 @@ plt.ylim([-1, params_demo.shape[1]])
 plt.xlim([(min(params_demo.quantile(0.025))-0.5), (max(params_demo.quantile(0.975))+0.5)])
 plt.title('Coefficients')
 plt.tight_layout()
-plt.savefig('DemoCoefficients_ConfidenceIntervals.png')
+plt.savefig('DemoCoefficients_ConfidenceIntervals_m2.png')
 plt.show()
 
 # Plot coefficients with confidence intervals:
@@ -402,12 +407,12 @@ plt.ylim([-1, params_state.shape[1]])
 plt.xlim([(min(params_state.quantile(0.025))-0.5), (max(params_state.quantile(0.975))+0.5)])
 plt.title('State Intercepts')
 plt.tight_layout()
-plt.savefig('StateIntercepts_ConfidenceIntervals.png')
+plt.savefig('StateIntercepts_ConfidenceIntervals_m2.png')
 plt.show()
 
 # Traceplot:
 model_2_fit.plot()
-plt.savefig('ParameterDistributions_model_1.png')
+plt.savefig('ParameterDistributions_model_2.png')
 plt.show()
 
 """# Plot individual parameter's different chains:
@@ -429,7 +434,7 @@ c_m1 = pd.DataFrame(params_m1['c'])
 d_m1 = pd.DataFrame(params_m1['d'])
 e_m1 = pd.DataFrame(params_m1['e'])
 params_m2 = model_2_fit.extract(['alpha', 'a', 'b', 'c', 'd', 'e'])
-alpha_m2 = pd.DataFrame(params_m1['alpha'])
+alpha_m2 = pd.DataFrame(params_m2['alpha'])
 a_m2 = pd.DataFrame(params_m2['a'])
 b_m2 = pd.DataFrame(params_m2['b'])
 c_m2 = pd.DataFrame(params_m2['c'])
@@ -437,20 +442,41 @@ d_m2 = pd.DataFrame(params_m2['d'])
 e_m2 = pd.DataFrame(params_m2['e'])
 L = census88.shape[0]
 y_pred = np.full((int((n_iter / 2) * n_chains),L), np.nan)
+y_pred_cond = np.full((int((n_iter / 2) * n_chains),L), np.nan)
 for l in range(0, L):
-    y_pred[:,l] = sp.special.expit(alpha_m1.ix[:,0] + alpha_m1.ix[:,1] * census88.v_prev[l]+ 
-    beta_fm.ix[:,2] * census88.female[l] + beta_fm.ix[:,3]  +
-    beta_fm.ix[:,4] * census88.female[l] * census88.black[l] +
-    a_fm.ix[:,census88.age[l]-1] + b_fm.ix[:,census88.edu[l]-1] +
-    c_fm.ix[:,census88.age_edu[l]-1] + d_fm.ix[:,census88.state[l]-1] +
-    e_fm.ix[:,census88.region[l]-1])
+  y_pred[:,l] = sp.special.expit(alpha_m1.ix[:,0] + alpha_m1.ix[:,1] * census88.v_prev[l] + 
+    a_m1.ix[:,census88.state[l]-1] + b_m1.ix[:,census88.edu[l]-1] + c_m1.ix[:,census88.sex[l]-1] + 
+    d_m1.ix[:,census88.age[l]-1] + e_m1.ix[:,census88.race[l]-1])
+  y_pred_cond[:,l] = sp.special.expit(alpha_m2.ix[:,0] + alpha_m2.ix[:,1] * census88.v_prev[l] + 
+    a_m2.ix[:,census88.state[l]-1] + b_m2.ix[:,census88.edu[l]-1] + c_m2.ix[:,census88.sex[l]-1] + 
+    d_m2.ix[:,census88.age[l]-1] + e_m2.ix[:,census88.race[l]-1])
+
+# Convert to unconditional probabilities:
+y_bush = y_pred_cond * y_pred
+y_non_bush = (1 - y_pred_cond) * y_pred
+
+# Normalized:
+y_bush_norm = y_bush / (y_bush + y_non_bush)
+y_non_bush_norm = y_non_bush / (y_bush + y_non_bush)
 
 # average over strata within each state
 y_pred_state = np.full((int((n_iter / 2) * n_chains),n_state), np.nan)
 for j in range(1,n_state+1):
     sel = [s for s in range(L) if census88.state[s] ==  j]
-    y_pred_state[:,j-1] = np.divide((np.dot(y_pred[:,sel],(census88[census88.state == j]).N)),sum((census88[census88.state == j]).N))
+    y_pred_state[:,j-1] = np.divide((np.dot(y_bush_norm[:,sel],(census88[census88.state == j]).N)),sum((census88[census88.state == j]).N))
 y_pred_state = pd.DataFrame(y_pred_state)
+
+y_pred_state_bush = np.full((int((n_iter / 2) * n_chains),n_state), np.nan)
+for j in range(1,n_state+1):
+    sel = [s for s in range(L) if census88.state[s] ==  j]
+    y_pred_state_bush[:,j-1] = np.divide((np.dot(y_bush[:,sel],(census88[census88.state == j]).N)),sum((census88[census88.state == j]).N))
+y_pred_state_bush = pd.DataFrame(y_pred_state_bush)
+
+y_pred_state_non_bush = np.full((int((n_iter / 2) * n_chains),n_state), np.nan)
+for j in range(1,n_state+1):
+    sel = [s for s in range(L) if census88.state[s] ==  j]
+    y_pred_state_non_bush[:,j-1] = np.divide((np.dot(y_non_bush[:,sel],(census88[census88.state == j]).N)),sum((census88[census88.state == j]).N))
+y_pred_state_non_bush = pd.DataFrame(y_pred_state_non_bush)
 
 """#Old plotting method:
 plt.figure(figsize=(16, 6))
@@ -472,7 +498,27 @@ plt.ylim([-1, y_pred_state.shape[1]])
 plt.xlim([(min(y_pred_state.quantile(0.025))-0.5), (max(y_pred_state.quantile(0.975))+0.5)])
 plt.title('State Estimates')
 plt.tight_layout()
-plt.savefig('State_Estimates.png')
+plt.savefig('State_Estimates_Normalized.png')
+plt.show()
+
+# New plotting method:
+ticks_list = list(state_info.state_abbr.values)
+plt.figure(figsize=(10,20))
+plt.plot(y_pred_state_bush.median(), range(y_pred_state_bush.shape[1]), 'ro', ms = 10)
+plt.plot(y_pred_state_non_bush.median(), range(y_pred_state_non_bush.shape[1]), 'bo', ms = 10)
+plt.plot(election88.electionresult, range(election88.shape[0]), 'm.', ms = 10)
+plt.hlines(range(y_pred_state_bush.shape[1]), y_pred_state_bush.quantile(0.025), y_pred_state_bush.quantile(0.975), 'r')
+plt.hlines(range(y_pred_state_bush.shape[1]), y_pred_state_bush.quantile(0.25), y_pred_state_bush.quantile(0.75), 'r', linewidth = 3)
+plt.hlines(range(y_pred_state_non_bush.shape[1]), y_pred_state_non_bush.quantile(0.025), y_pred_state_non_bush.quantile(0.975), 'b')
+plt.hlines(range(y_pred_state_non_bush.shape[1]), y_pred_state_non_bush.quantile(0.25), y_pred_state_non_bush.quantile(0.75), 'b', linewidth = 3)
+plt.axvline(0.5, linestyle = 'dashed', color = 'k')
+plt.xlabel('Median State Estimate (50 and 95% CI) and Actual Election Outcome (red)')
+plt.yticks(range(y_pred_state_bush.shape[1]), ticks_list)
+plt.ylim([-1, y_pred_state_bush.shape[1]])
+plt.xlim([(min(y_pred_state_bush.quantile(0.025))-0.5), (max(y_pred_state_bush.quantile(0.975))+0.5)])
+plt.title('State Estimates')
+plt.tight_layout()
+plt.savefig('State_Estimates_Actual.png')
 plt.show()
 
 #"""Extension: A more intricate model"""
