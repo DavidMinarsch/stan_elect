@@ -454,6 +454,7 @@ for l in range(0, L):
 # Convert to unconditional probabilities:
 y_bush = y_pred_cond * y_pred
 y_non_bush = (1 - y_pred_cond) * y_pred
+y_non = (1 - y_pred)
 
 # Normalized:
 y_bush_norm = y_bush / (y_bush + y_non_bush)
@@ -477,6 +478,12 @@ for j in range(1,n_state+1):
     sel = [s for s in range(L) if census88.state[s] ==  j]
     y_pred_state_non_bush[:,j-1] = np.divide((np.dot(y_non_bush[:,sel],(census88[census88.state == j]).N)),sum((census88[census88.state == j]).N))
 y_pred_state_non_bush = pd.DataFrame(y_pred_state_non_bush)
+
+y_pred_state_non = np.full((int((n_iter / 2) * n_chains),n_state), np.nan)
+for j in range(1,n_state+1):
+    sel = [s for s in range(L) if census88.state[s] ==  j]
+    y_pred_state_non[:,j-1] = np.divide((np.dot(y_non[:,sel],(census88[census88.state == j]).N)),sum((census88[census88.state == j]).N))
+y_pred_state_non = pd.DataFrame(y_pred_state_non)
 
 """#Old plotting method:
 plt.figure(figsize=(16, 6))
@@ -506,16 +513,20 @@ ticks_list = list(state_info.state_abbr.values)
 plt.figure(figsize=(10,20))
 plt.plot(y_pred_state_bush.median(), range(y_pred_state_bush.shape[1]), 'ro', ms = 10)
 plt.plot(y_pred_state_non_bush.median(), range(y_pred_state_non_bush.shape[1]), 'bo', ms = 10)
+plt.plot(y_pred_state_non.median(), range(y_pred_state_non.shape[1]), 'yo', ms = 10)
 plt.plot(election88.electionresult, range(election88.shape[0]), 'm.', ms = 10)
 plt.hlines(range(y_pred_state_bush.shape[1]), y_pred_state_bush.quantile(0.025), y_pred_state_bush.quantile(0.975), 'r')
 plt.hlines(range(y_pred_state_bush.shape[1]), y_pred_state_bush.quantile(0.25), y_pred_state_bush.quantile(0.75), 'r', linewidth = 3)
+plt.hlines(range(y_pred_state_non.shape[1]), y_pred_state_non.quantile(0.025), y_pred_state_non.quantile(0.975), 'y')
+plt.hlines(range(y_pred_state_non.shape[1]), y_pred_state_non.quantile(0.25), y_pred_state_non.quantile(0.75), 'y', linewidth = 3)
 plt.hlines(range(y_pred_state_non_bush.shape[1]), y_pred_state_non_bush.quantile(0.025), y_pred_state_non_bush.quantile(0.975), 'b')
 plt.hlines(range(y_pred_state_non_bush.shape[1]), y_pred_state_non_bush.quantile(0.25), y_pred_state_non_bush.quantile(0.75), 'b', linewidth = 3)
 plt.axvline(0.5, linestyle = 'dashed', color = 'k')
 plt.xlabel('Median State Estimate (50 and 95% CI) and Actual Election Outcome (red)')
 plt.yticks(range(y_pred_state_bush.shape[1]), ticks_list)
 plt.ylim([-1, y_pred_state_bush.shape[1]])
-plt.xlim([(min(y_pred_state_bush.quantile(0.025))-0.5), (max(y_pred_state_bush.quantile(0.975))+0.5)])
+plt.xlim([0,1])
+#plt.xlim([(min(y_pred_state_bush.quantile(0.025))-0.5), (max(y_pred_state_bush.quantile(0.975))+0.5)])
 plt.title('State Estimates')
 plt.tight_layout()
 plt.savefig('State_Estimates_Actual.png')
