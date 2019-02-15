@@ -1,14 +1,8 @@
-"""
-import os
-os.chdir('/Users/davidminarsch/Desktop/PythonMLM/Election_Example')
-exec(open("election88_2.py").read())
-"""
 import numpy as np
 import pandas as pd
 import scipy as sp
 import matplotlib.pyplot as plt
 import seaborn as sns; sns.set_context('notebook')
-import pystan
 from collections import OrderedDict
 import pickle
 from pystan import StanModel
@@ -16,12 +10,10 @@ from pystan import StanModel
 """Multilevel Modeling with Poststratification (MRP)"""
 # Use multilevel regression to model individual survey responses as a function of demographic and geographic
 # predictors, partially pooling respondents across states/regions to an extent determined by the data.
-# The final step is poststratification.
+# The final step is post-stratification.
 
 # Read the data & define variables
-# Data are at http://www.stat.columbia.edu/~gelman/arm/examples/election88
-# Data are at /Users/davidminarsch/Desktop/PythonMLM/ARM_Data/election88 and /Users/davidminarsch/Desktop/PythonMLM/Election_Example
-# Set up the data for the election88 example
+# Data are from http://www.stat.columbia.edu/~gelman/arm/examples/election88
 
 """Step 1: gather national opinion polls (they need to include respondent information down to the level of disaggregation
 the analysis is targetting) """
@@ -36,7 +28,7 @@ the analysis is targetting) """
 # - female: indicator (=1) for female
 # - black: indicator (=1) for black
 # - weight: sample weight
-polls = pd.read_csv('/Users/davidminarsch/Desktop/PythonMLM/Election_Example/polls.csv')
+polls = pd.read_csv('./data/polls.csv')
 polls = polls.drop(polls.columns[[0]], axis=1)
 
 """Step 2: create a separate dataset of state-level predictors """
@@ -44,23 +36,23 @@ polls = polls.drop(polls.columns[[0]], axis=1)
 # - state_abbr: abbreviations of state names
 # - regions:  1=northeast, 2=south, 3=north central, 4=west, 5=d.c.
 # - not_dc: indicator variable which is 1 for non_dc states
-state_info = pd.read_csv('/Users/davidminarsch/Desktop/PythonMLM/Election_Example/state.csv')
+state_info = pd.read_csv('./data/state.csv')
 state_info = state_info.rename(columns={'Unnamed: 0': 'state'})
 
 # Include a measure of previous vote as a state-level predictor. The variables are:
 # - g76_84pr: state average in previous election
 # - stnum2: state id
-presvote = pd.read_csv("/Users/davidminarsch/Desktop/PythonMLM/ARM_Data/election88/presvote.csv")
+presvote = pd.read_csv("./data/presvote.csv")
 presvote = presvote.drop(presvote.columns[[0]], axis=1)
 presvote = presvote.rename(columns={'g76_84pr': 'v_prev', 'stnum2': 'state'})
 
 # Include a measure of candidate effects as a state-level predictor and add empty row for DC.
-candidate_effects = pd.read_csv("/Users/davidminarsch/Desktop/PythonMLM/ARM_Data/election88/candidate_effects.csv")
+candidate_effects = pd.read_csv("./data/candidate_effects.csv")
 candidate_effects = candidate_effects.drop(candidate_effects.columns[[0]], axis=1)
 candidate_effects = candidate_effects.rename(columns={'state': 'state_abbr'})
 candidate_effects.loc[:,'candidate_effects_weighted'] = (candidate_effects.loc[:,'X76'] + candidate_effects.loc[:,'X80'] + candidate_effects.loc[:,'X84']) / 3.0
 candidate_effects_1 = candidate_effects.iloc[:9]
-candidate_effects = pd.concat([candidate_effects_1,candidate_effects.ix[8:]]).reset_index(drop=True)
+candidate_effects = pd.concat([candidate_effects_1,candidate_effects.iloc[8:]]).reset_index(drop=True)
 candidate_effects.iloc[8] = 0
 candidate_effects = candidate_effects.set_value(8, 'state_abbr', 'DC')
 presvote.loc[:,'v_prev'] += candidate_effects.loc[:,'candidate_effects_weighted']
@@ -95,7 +87,7 @@ n_state = max(polls_subset.state)       # of states
 
 """ Extra Step: Validation Data"""
 # load in 1988 election data as a validation check
-election88 = pd.read_csv("/Users/davidminarsch/Desktop/PythonMLM/ARM_Data/election88/election88.csv")
+election88 = pd.read_csv("./data/election88.csv")
 election88 = election88.drop(election88.columns[[0]], axis=1)
 # stnum: state id
 # st: state abbreviation
@@ -105,7 +97,7 @@ election88 = election88.drop(election88.columns[[0]], axis=1)
 # merge_:
 
 """Step 3: Load 1988 census data to enable poststratification."""
-census88 = pd.read_csv("/Users/davidminarsch/Desktop/PythonMLM/ARM_Data/election88/census88.csv")
+census88 = pd.read_csv("./data/census88.csv")
 census88 = census88.drop(census88.columns[[0]], axis=1)
 census88 = pd.merge(census88, state_info, on='state', how='left')
 census88 = pd.merge(census88, presvote, on='state', how='left')
@@ -213,11 +205,10 @@ model_1_data_dict = {'N': n, 'n_state': n_state, 'n_edu': n_edu, 'n_sex': n_sex,
 # Fitting the model:
 n_chains = 2
 n_iter = 1000
-#full_model_fit = pystan.stan(model_code=full_model, data=full_model_data_dict, iter=n_iter, chains=2)
-#sm = StanModel(model_code=model_1)
-#with open('model_1.pkl', 'wb') as f:
-#    pickle.dump(sm, f)
-sm = pickle.load(open('model_1.pkl', 'rb'))
+sm = StanModel(model_code=model_1)
+with open('./models/model_1.pkl', 'wb') as f:
+    pickle.dump(sm, f)
+sm = pickle.load(open('./models/model_1.pkl', 'rb'))
 model_1_fit = sm.sampling(data=model_1_data_dict, iter=n_iter, chains=n_chains)
 
 # Plot coefficients with confidence intervals:
@@ -240,7 +231,7 @@ plt.ylim([-1, params_demo.shape[1]])
 plt.xlim([(min(params_demo.quantile(0.025))-0.5), (max(params_demo.quantile(0.975))+0.5)])
 plt.title('Coefficients')
 plt.tight_layout()
-plt.savefig('DemoCoefficients_ConfidenceIntervals.png')
+plt.savefig('./figs/DemoCoefficients_ConfidenceIntervals.png')
 plt.show()
 
 # Plot coefficients with confidence intervals:
@@ -260,12 +251,12 @@ plt.ylim([-1, params_state.shape[1]])
 plt.xlim([(min(params_state.quantile(0.025))-0.5), (max(params_state.quantile(0.975))+0.5)])
 plt.title('State Intercepts')
 plt.tight_layout()
-plt.savefig('StateIntercepts_ConfidenceIntervals.png')
+plt.savefig('./figs/StateIntercepts_ConfidenceIntervals.png')
 plt.show()
 
 # Traceplot:
 model_1_fit.plot()
-plt.savefig('ParameterDistributions_model_1.png')
+plt.savefig('./figs/ParameterDistributions_model_1.png')
 plt.show()
 
 ################################
@@ -360,11 +351,10 @@ model_2_data_dict = {'N': n_no_nan, 'n_state': n_state, 'n_edu': n_edu, 'n_sex':
 # Fitting the model:
 n_chains = 2
 n_iter = 1000
-#full_model_fit = pystan.stan(model_code=full_model, data=full_model_data_dict, iter=n_iter, chains=2)
-#sm = StanModel(model_code=model_2)
-#with open('model_2.pkl', 'wb') as f:
-#    pickle.dump(sm, f)
-sm = pickle.load(open('model_2.pkl', 'rb'))
+sm = StanModel(model_code=model_2)
+with open('./models/model_2.pkl', 'wb') as f:
+    pickle.dump(sm, f)
+sm = pickle.load(open('./models/model_2.pkl', 'rb'))
 model_2_fit = sm.sampling(data=model_2_data_dict, iter=n_iter, chains=n_chains)
 
 # Plot coefficients with confidence intervals:
@@ -387,7 +377,7 @@ plt.ylim([-1, params_demo.shape[1]])
 plt.xlim([(min(params_demo.quantile(0.025))-0.5), (max(params_demo.quantile(0.975))+0.5)])
 plt.title('Coefficients')
 plt.tight_layout()
-plt.savefig('DemoCoefficients_ConfidenceIntervals_m2.png')
+plt.savefig('./figs/DemoCoefficients_ConfidenceIntervals_m2.png')
 plt.show()
 
 # Plot coefficients with confidence intervals:
@@ -407,12 +397,12 @@ plt.ylim([-1, params_state.shape[1]])
 plt.xlim([(min(params_state.quantile(0.025))-0.5), (max(params_state.quantile(0.975))+0.5)])
 plt.title('State Intercepts')
 plt.tight_layout()
-plt.savefig('StateIntercepts_ConfidenceIntervals_m2.png')
+plt.savefig('./figs/StateIntercepts_ConfidenceIntervals_m2.png')
 plt.show()
 
 # Traceplot:
 model_2_fit.plot()
-plt.savefig('ParameterDistributions_model_2.png')
+plt.savefig('./figs/ParameterDistributions_model_2.png')
 plt.show()
 
 """# Plot individual parameter's different chains:
@@ -420,7 +410,7 @@ b = basic_model_fit.extract(permuted=True)['b']
 b_split = np.array_split(b, n_chains) # assumes that the b array is just one chain tacked onto the end of another
 for i in range(n_chains):
     plt.plot(b_split[i])
-plt.savefig('Traceplot.png')
+plt.savefig('./figs/Traceplot.png')
 plt.show()"""
 
 """Poststratification"""
@@ -444,12 +434,12 @@ L = census88.shape[0]
 y_pred = np.full((int((n_iter / 2) * n_chains),L), np.nan)
 y_pred_cond = np.full((int((n_iter / 2) * n_chains),L), np.nan)
 for l in range(0, L):
-  y_pred[:,l] = sp.special.expit(alpha_m1.ix[:,0] + alpha_m1.ix[:,1] * census88.v_prev[l] + 
-    a_m1.ix[:,census88.state[l]-1] + b_m1.ix[:,census88.edu[l]-1] + c_m1.ix[:,census88.sex[l]-1] + 
-    d_m1.ix[:,census88.age[l]-1] + e_m1.ix[:,census88.race[l]-1])
-  y_pred_cond[:,l] = sp.special.expit(alpha_m2.ix[:,0] + alpha_m2.ix[:,1] * census88.v_prev[l] + 
-    a_m2.ix[:,census88.state[l]-1] + b_m2.ix[:,census88.edu[l]-1] + c_m2.ix[:,census88.sex[l]-1] + 
-    d_m2.ix[:,census88.age[l]-1] + e_m2.ix[:,census88.race[l]-1])
+  y_pred[:,l] = sp.special.expit(alpha_m1.iloc[:,0] + alpha_m1.iloc[:,1] * census88.v_prev[l] + 
+    a_m1.iloc[:,census88.state[l]-1] + b_m1.iloc[:,census88.edu[l]-1] + c_m1.iloc[:,census88.sex[l]-1] + 
+    d_m1.iloc[:,census88.age[l]-1] + e_m1.iloc[:,census88.race[l]-1])
+  y_pred_cond[:,l] = sp.special.expit(alpha_m2.iloc[:,0] + alpha_m2.iloc[:,1] * census88.v_prev[l] + 
+    a_m2.iloc[:,census88.state[l]-1] + b_m2.iloc[:,census88.edu[l]-1] + c_m2.iloc[:,census88.sex[l]-1] + 
+    d_m2.iloc[:,census88.age[l]-1] + e_m2.iloc[:,census88.race[l]-1])
 
 # Convert to unconditional probabilities:
 y_bush = y_pred_cond * y_pred
@@ -488,7 +478,7 @@ y_pred_state_non = pd.DataFrame(y_pred_state_non)
 """#Old plotting method:
 plt.figure(figsize=(16, 6))
 sns.boxplot(data=y_pred_state, whis=np.inf, color="c")
-plt.savefig('Estimates_state.png')
+plt.savefig('./figs/Estimates_state.png')
 plt.show()"""
 
 # New plotting method:
@@ -505,7 +495,7 @@ plt.ylim([-1, y_pred_state.shape[1]])
 plt.xlim([(min(y_pred_state.quantile(0.025))-0.5), (max(y_pred_state.quantile(0.975))+0.5)])
 plt.title('State Estimates')
 plt.tight_layout()
-plt.savefig('State_Estimates_Normalized.png')
+plt.savefig('./figs/State_Estimates_Normalized.png')
 plt.show()
 
 # New plotting method:
@@ -529,7 +519,7 @@ plt.xlim([0,1])
 #plt.xlim([(min(y_pred_state_bush.quantile(0.025))-0.5), (max(y_pred_state_bush.quantile(0.975))+0.5)])
 plt.title('State Estimates')
 plt.tight_layout()
-plt.savefig('State_Estimates_Actual.png')
+plt.savefig('./figs/State_Estimates_Actual.png')
 plt.show()
 
 #"""Extension: A more intricate model"""
